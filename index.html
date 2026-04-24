@@ -65,12 +65,19 @@ button{
     position:relative;
 }
 
+/* 🔥 YELLOW STICKER LABEL */
 .label{
     position:absolute;
     top:-22px;
     width:100%;
-    color:#00ffcc;
+    background:yellow;
+    color:black;
     font-weight:bold;
+    font-size:16px;
+    padding:2px 0;
+    border-radius:6px;
+    font-family: "Arial Black", Arial, sans-serif;
+    box-shadow:0 0 8px rgba(255,255,0,0.8);
 }
 </style>
 </head>
@@ -112,6 +119,9 @@ let particles = [];
 let score = 0;
 let running = true;
 let animationId;
+
+/* ⏱ GAME TIMER */
+let startTime = Date.now();
 
 /* 🍉 FRUITS */
 const fruitTypes = [
@@ -314,8 +324,38 @@ class Particle{
     }
 }
 
+/* 🔥 ADVANCED SPAWN SYSTEM */
 setInterval(()=>{
-    if(running) fruits.push(new Fruit());
+    if(running){
+
+        let time = (Date.now() - startTime) / 1000;
+
+        let maxFruits = 1;
+
+        if(time > 80){
+            maxFruits = 4;
+        } else if(time > 50){
+            maxFruits = 3;
+        } else if(time > 20){
+            maxFruits = 2;
+        }
+
+        let count = 1 + Math.floor(Math.random()*maxFruits);
+
+        for(let i=0;i<count;i++){
+
+            if(Math.random() < 0.5){
+                // same time spawn
+                fruits.push(new Fruit());
+            } else {
+                // slight delay spawn (separate feel)
+                setTimeout(()=>{
+                    if(running) fruits.push(new Fruit());
+                }, Math.random()*400);
+            }
+
+        }
+    }
 },1200);
 
 let drawing=false;
@@ -413,6 +453,8 @@ function restartGame(){
     score=0;
     running=true;
 
+    startTime = Date.now(); // 🔥 reset timer
+
     document.getElementById("score").innerText=0;
     document.getElementById("gameOver").style.display="none";
 
@@ -420,5 +462,5 @@ function restartGame(){
 }
 </script>
 
-</body
+</body>
 </html>

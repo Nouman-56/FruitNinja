@@ -35,6 +35,12 @@ canvas{display:block;}
     text-align:center;
 }
 
+#resultStats{
+    margin-top:20px;
+    font-size:24px;
+    line-height:1.6;
+}
+
 button{
     margin-top:20px;
     padding:10px 25px;
@@ -88,6 +94,7 @@ button{
 
 <div id="gameOver">
 GAME OVER
+<div id="resultStats"></div>
 <br>
 <button onclick="restartGame()">Restart</button>
 </div>
@@ -123,28 +130,22 @@ let animationId;
 /* ⏱ GAME TIMER */
 let startTime = Date.now();
 
+/* 🔥 FRUIT COUNTER SYSTEM */
+let jarCounts = {
+    apple:0,
+    banana:0,
+    orange:0,
+    apricot:0,
+    pineapple:0
+};
+
 /* 🍉 FRUITS */
 const fruitTypes = [
-{
-    key:"apple",
-    img:"https://i.postimg.cc/nLv9sKHn/pngtree-fresh-apple-fruit-red-png-image-10203073.png"
-},
-{
-    key:"banana",
-    img:"https://i.postimg.cc/htQdnW6J/images-11-removebg-preview.png"
-},
-{
-    key:"orange",
-    img:"https://i.postimg.cc/G2wPVhmj/orange-1218158-1280.png"
-},
-{
-    key:"apricot",
-    img:"https://i.postimg.cc/WzsGpWrZ/pngimg-com-apricot-PNG12652.png"
-},
-{
-    key:"pineapple",
-    img:"https://i.postimg.cc/XYqgyzPk/pngtree-pineapple-png-with-ai-generated-png-image-11568478.png"
-}
+{ key:"apple", img:"https://i.postimg.cc/nLv9sKHn/pngtree-fresh-apple-fruit-red-png-image-10203073.png" },
+{ key:"banana", img:"https://i.postimg.cc/htQdnW6J/images-11-removebg-preview.png" },
+{ key:"orange", img:"https://i.postimg.cc/G2wPVhmj/orange-1218158-1280.png" },
+{ key:"apricot", img:"https://i.postimg.cc/WzsGpWrZ/pngimg-com-apricot-PNG12652.png" },
+{ key:"pineapple", img:"https://i.postimg.cc/XYqgyzPk/pngtree-pineapple-png-with-ai-generated-png-image-11568478.png" }
 ];
 
 const boxesDiv = document.getElementById("boxes");
@@ -345,10 +346,8 @@ setInterval(()=>{
         for(let i=0;i<count;i++){
 
             if(Math.random() < 0.5){
-                // same time spawn
                 fruits.push(new Fruit());
             } else {
-                // slight delay spawn (separate feel)
                 setTimeout(()=>{
                     if(running) fruits.push(new Fruit());
                 }, Math.random()*400);
@@ -393,6 +392,8 @@ function cut(e){
 function sliceFruit(fruit){
     fruit.sliced=true;
     score++;
+    jarCounts[fruit.key]++; // 🔥 COUNT TRACK
+
     document.getElementById("score").innerText=score;
 
     const jar = jarPositions[fruit.key];
@@ -441,6 +442,16 @@ animate();
 function gameOver(){
     running=false;
     cancelAnimationFrame(animationId);
+
+    let statsHTML = `
+    🍎 Apple: ${jarCounts.apple}<br>
+    🍌 Banana: ${jarCounts.banana}<br>
+    🍊 Orange: ${jarCounts.orange}<br>
+    🟠 Apricot: ${jarCounts.apricot}<br>
+    🍍 Pineapple: ${jarCounts.pineapple}
+    `;
+
+    document.getElementById("resultStats").innerHTML = statsHTML;
     document.getElementById("gameOver").style.display="block";
 }
 
@@ -453,7 +464,9 @@ function restartGame(){
     score=0;
     running=true;
 
-    startTime = Date.now(); // 🔥 reset timer
+    startTime = Date.now();
+
+    jarCounts = { apple:0, banana:0, orange:0, apricot:0, pineapple:0 };
 
     document.getElementById("score").innerText=0;
     document.getElementById("gameOver").style.display="none";

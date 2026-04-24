@@ -156,6 +156,7 @@ button:active{
     box-shadow:0 10px 12px rgba(0,0,0,0.4);
     transition: all 0.1s ease;
     backdrop-filter: blur(2px);
+    overflow: visible;
 }
 
 /* jar shine */
@@ -219,7 +220,23 @@ button:active{
     filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5));
 }
 
-/* fruit display icons */
+/* Jar drop animation effect */
+@keyframes jarShake {
+    0% { transform: scale(1); background: linear-gradient(145deg,#2c2418,#1a150e); }
+    30% { transform: scale(1.08); background: linear-gradient(145deg,#ffcc66,#d4a017); border-color: #fff5b0; }
+    60% { transform: scale(1.02); background: linear-gradient(145deg,#f5d742,#e6b800); }
+    100% { transform: scale(1); background: linear-gradient(145deg,#2c2418,#1a150e); border-color: #ffcc66; }
+}
+
+.jar-drop-animation {
+    animation: jarShake 0.45s ease-out;
+}
+
+/* fruit fall into jar effect particles */
+@keyframes splashParticle {
+    0% { opacity: 0.9; transform: scale(0.2); }
+    100% { opacity: 0; transform: scale(1.5); }
+}
 
 /* Very Good Popup Animation */
 @keyframes popupFade {
@@ -296,7 +313,6 @@ resizeCanvas();
 window.addEventListener("resize", ()=>{
     resizeCanvas();
     updateJarPositions();
-    // Force scroll to top
     window.scrollTo(0, 0);
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
@@ -316,7 +332,7 @@ document.body.addEventListener("touchmove", function(e) {
 let fruits = [];
 let slices = [];
 let particles = [];
-let specialItems = []; // array for special image items
+let specialItems = [];
 let score = 0;
 let running = true;
 let animationId;
@@ -347,14 +363,17 @@ const fruitTypes = [
 
 const boxesDiv = document.getElementById("boxes");
 let jarPositions = {};
+let jarElements = {};
 
 // create jars dynamically
 function buildJars(){
     boxesDiv.innerHTML = "";
+    jarElements = {};
     fruitTypes.forEach((fruit, idx) => {
         const box = document.createElement("div");
         box.className = "box";
         box.setAttribute("data-jar", fruit.key);
+        jarElements[fruit.key] = box;
         
         const label = document.createElement("div");
         label.className = "label";
@@ -386,7 +405,8 @@ function updateJarPositions(){
         const fruitKey = fruitTypes[index].key;
         jarPositions[fruitKey] = {
             x: rect.left + rect.width/2,
-            y: rect.top + rect.height/2 - 10
+            y: rect.top + rect.height/2 - 10,
+            rect: rect
         };
     });
 }
@@ -400,10 +420,37 @@ function updateJarBadge(fruitKey){
     }
 }
 
+// Animate jar when fruit falls into it
+function animateJarDrop(fruitKey) {
+    const jarElement = jarElements[fruitKey];
+    if(jarElement) {
+        jarElement.classList.remove('jar-drop-animation');
+        // Force reflow to restart animation
+        void jarElement.offsetWidth;
+        jarElement.classList.add('jar-drop-animation');
+        setTimeout(() => {
+            if(jarElement) jarElement.classList.remove('jar-drop-animation');
+        }, 500);
+        
+        // Create mini splash particles around jar
+        const jarRect = jarPositions[fruitKey];
+        if(jarRect) {
+            for(let i=0; i<12; i++) {
+                particles.push(new JarSplashParticle(
+                    jarRect.x + (Math.random() - 0.5) * 40,
+                    jarRect.y + (Math.random() - 0.5) * 30
+                ));
+            }
+        }
+    }
+}
+
 function incrementJarCounter(fruitKey){
     if(jarFruitCount.hasOwnProperty(fruitKey)){
         jarFruitCount[fruitKey]++;
         updateJarBadge(fruitKey);
+        // Trigger jar drop animation
+        animateJarDrop(fruitKey);
     }
 }
 
@@ -422,13 +469,12 @@ function showVeryGoodPopup() {
 function trySpawnSpecialItem() {
     if(fruitCutCounter >= 20) {
         fruitCutCounter = 0;
-        // Create special item that falls from top
         const special = new SpecialItem();
         specialItems.push(special);
     }
 }
 
-/* 🎁 SPECIAL ITEM CLASS - Falls like fruit, can be swiped */
+/* 🎁 SPECIAL ITEM CLASS */
 class SpecialItem {
     constructor() {
         this.img = specialImg;
@@ -478,17 +524,16 @@ class SpecialItem {
     }
 }
 
-/* 🍉 FRUIT CLASS - BOUNDED INSIDE SCREEN */
+/* 🍉 FRUIT CLASS */
 class Fruit{
     constructor(){
         this.data = fruitTypes[Math.floor(Math.random()*fruitTypes.length)];
         this.key = this.data.key;
         this.img = new Image();
         this.img.src = this.data.img;
-        // 🍎 FRUIT SPAWN ONLY WITHIN VISIBLE SCREEN WIDTH
         const safeMargin = 60;
         this.x = safeMargin + Math.random() * (screenWidth - safeMargin * 2);
-        this.y = -80 - Math.random() * 50; // Start from above screen
+        this.y = -80 - Math.random() * 50;
         this.radius = 78;
         this.speedY = 1.8 + Math.random() * 2.5;
         this.gravity = 0.25;
@@ -533,7 +578,7 @@ class Fruit{
     }
 }
 
-/* 🍉 SLICE PART - TELEPORT TO OWN JAR */
+/* 🍉 SLICE PART - Enhanced jar falling animation */
 class SlicePart{
     constructor(x, y, img, fruitKey, side, targetX, targetY){
         this.x = x;
@@ -545,11 +590,12 @@ class SlicePart{
         this.vy = -5.2 - Math.random() * 2;
         this.targetX = targetX;
         this.targetY = targetY;
-        this.gravity = 0.2;
+        this.gravity = 0.22;
         this.rot = 0;
         this.alpha = 1;
         this.toJar = false;
         this.teleportTriggered = false;
+        this.fallIntensity = 0;
     }
 
     update(){
@@ -558,24 +604,40 @@ class SlicePart{
             this.y += this.vy;
             this.vy += this.gravity;
             this.rot += 0.15;
-            if(this.vy > 1.5 || this.y > screenHeight - 120){
+            this.fallIntensity = Math.min(1, this.fallIntensity + 0.02);
+            // Start moving toward jar after reaching lower screen area
+            if(this.vy > 1.2 || this.y > screenHeight - 130){
                 this.toJar = true;
             }
         } else {
+            // Smooth magnetic effect toward jar - creates falling into jar illusion
             let dx = this.targetX - this.x;
             let dy = this.targetY - this.y;
             let distance = Math.hypot(dx, dy);
-            if(distance < 8 && !this.teleportTriggered){
+            
+            // Increase speed as it gets closer - feels like dropping into jar
+            let speed = Math.min(0.32, 0.12 + (1 / (distance + 20)) * 3);
+            
+            this.x += dx * speed;
+            this.y += dy * speed;
+            this.rot += 0.2;
+            
+            // When very close to jar - teleport and trigger counter
+            if(distance < 20 && !this.teleportTriggered){
                 incrementJarCounter(this.fruitKey);
                 this.teleportTriggered = true;
                 this.alpha = 0;
                 return;
             }
-            let speed = 0.18;
-            this.x += dx * speed;
-            this.y += dy * speed;
-            this.rot += 0.1;
-            if(distance < 15 && !this.teleportTriggered){
+            
+            // Scale down slightly when approaching jar for depth effect
+            if(distance < 50) {
+                this.scale = 0.8;
+            } else {
+                this.scale = 1;
+            }
+            
+            if(distance < 12 && !this.teleportTriggered){
                 incrementJarCounter(this.fruitKey);
                 this.teleportTriggered = true;
                 this.alpha = 0;
@@ -596,6 +658,9 @@ class SlicePart{
         ctx.globalAlpha = Math.min(this.alpha, 0.95);
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rot);
+        
+        let scaleVal = this.scale || 1;
+        ctx.scale(scaleVal, scaleVal);
         
         let w = 130;
         ctx.beginPath();
@@ -621,6 +686,33 @@ class SlicePart{
     }
 }
 
+/* Jar splash particles when fruit lands in jar */
+class JarSplashParticle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 6;
+        this.vy = (Math.random() - 0.5) * 5 - 3;
+        this.life = 25;
+        this.size = 4 + Math.random() * 7;
+        this.color = `hsl(${40 + Math.random() * 30}, 90%, 65%)`;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.12;
+        this.life--;
+    }
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life / 25;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
 /* particles (juice effect) */
 class Particle{
     constructor(x,y){
@@ -636,7 +728,6 @@ class Particle{
         this.y += this.vy;
         this.vy += 0.15;
         this.life--;
-        // keep particles inside screen boundaries
         if(this.x < 0) this.x = 0;
         if(this.x > screenWidth) this.x = screenWidth;
     }
@@ -648,7 +739,7 @@ class Particle{
     }
 }
 
-/* ⏱ SPAWN SYSTEM - progressive difficulty */
+/* ⏱ SPAWN SYSTEM */
 let startTime = Date.now();
 let spawnInterval = null;
 
@@ -670,7 +761,7 @@ function startSpawning(){
     }, 1300);
 }
 
-/* 🎯 CUTTING MECHANICS - Also handles special items */
+/* 🎯 CUTTING MECHANICS */
 let drawing = false;
 
 function handleCut(x,y){
@@ -684,9 +775,7 @@ function handleCut(x,y){
         let dist = Math.hypot(dx,dy);
         if(dist < s.radius + 18 && !s.sliced){
             s.sliced = true;
-            // Show Very Good popup
             showVeryGoodPopup();
-            // Add some particles for effect
             for(let p=0;p<25;p++) particles.push(new Particle(s.x, s.y));
             specialItems.splice(i,1);
             return;
@@ -705,7 +794,6 @@ function handleCut(x,y){
             fruitCutCounter++;
             document.getElementById("score").innerText = score;
             
-            // Check if we need to spawn special item
             trySpawnSpecialItem();
             
             let target = jarPositions[f.key];
@@ -730,7 +818,7 @@ function handleCut(x,y){
     }
 }
 
-// touch + mouse events with proper coordinate mapping
+// touch + mouse events
 canvas.addEventListener("mousedown",(e)=>{ 
     drawing=true; 
     const rect = canvas.getBoundingClientRect();
@@ -849,7 +937,6 @@ function restartGame(){
             }
         }
         
-        // Update and draw special items
         for(let i=0;i<specialItems.length;i++){
             let s = specialItems[i];
             s.update();
@@ -885,7 +972,7 @@ function restartGame(){
     drawLoop();
 }
 
-/* 🧹 UTILITY: initial build and update positions */
+/* 🧹 UTILITY */
 buildJars();
 updateJarPositions();
 window.addEventListener('resize', ()=>{
@@ -957,7 +1044,6 @@ setInterval(()=>{
     }
 }, 2200);
 
-// Final safety: prevent body scroll
 document.body.style.overflow = 'hidden';
 document.documentElement.style.overflow = 'hidden';
 </script>

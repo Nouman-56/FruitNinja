@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Fruit Cutting Game FINAL</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <style>
 body{
@@ -92,16 +92,28 @@ GAME OVER
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-canvas.width = innerWidth;
-canvas.height = innerHeight;
+/* 🔥 SMOOTHING FIX */
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = "high";
+ctx.webkitImageSmoothingEnabled = true;
+ctx.mozImageSmoothingEnabled = true;
+
+/* 🔥 ANDROID FULLSCREEN FIX */
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
 
 let fruits = [];
 let slices = [];
 let particles = [];
 let score = 0;
 let running = true;
+let animationId;
 
-/* 🍉 REPLACED EMOJIS WITH PNG DATA */
+/* 🍉 FRUITS */
 const fruitTypes = [
 {
     key:"apple",
@@ -138,7 +150,6 @@ fruitTypes.forEach((f,index)=>{
 
     b.appendChild(label);
 
-    /* 🍉 IMAGE IN BOX */
     const img=document.createElement("img");
     img.src=f.img;
     img.style.width="60px";
@@ -156,7 +167,7 @@ fruitTypes.forEach((f,index)=>{
     },200);
 });
 
-/* 🍉 BIG FRUIT */
+/* 🍉 FRUIT */
 class Fruit{
     constructor(){
         this.data = fruitTypes[Math.floor(Math.random()*fruitTypes.length)];
@@ -185,11 +196,31 @@ class Fruit{
             ctx.fill();
             return;
         }
-        ctx.drawImage(this.img,this.x-60,this.y-60,120,120);
+
+        let size = 120;
+        let ratio = this.img.width / this.img.height;
+
+        let drawW, drawH;
+
+        if(ratio > 1){
+            drawW = size;
+            drawH = size / ratio;
+        }else{
+            drawH = size;
+            drawW = size * ratio;
+        }
+
+        ctx.drawImage(
+            this.img,
+            this.x - drawW/2,
+            this.y - drawH/2,
+            drawW,
+            drawH
+        );
     }
 }
 
-/* 🍉 SLICE PART */
+/* 🍉 SLICE */
 class SlicePart{
     constructor(x,y,img,key,side,targetX,targetY){
         this.x=x;
@@ -220,8 +251,8 @@ class SlicePart{
                 this.toJar=true;
             }
         }else{
-            this.x += (this.targetX-this.x)*0.08;
-            this.y += (this.targetY-this.y)*0.08;
+            this.x += (this.targetX-this.x) * 0.08;
+            this.y += (this.targetY-this.y) * 0.08;
         }
 
         this.rot+=0.2;
@@ -242,7 +273,20 @@ class SlicePart{
         }
         ctx.clip();
 
-        ctx.drawImage(this.img,-40,-40,80,80);
+        let size = 80;
+        let ratio = this.img.width / this.img.height;
+
+        let drawW, drawH;
+
+        if(ratio > 1){
+            drawW = size;
+            drawH = size / ratio;
+        }else{
+            drawH = size;
+            drawW = size * ratio;
+        }
+
+        ctx.drawImage(this.img,-drawW/2,-drawH/2,drawW,drawH);
 
         ctx.restore();
     }
@@ -347,17 +391,22 @@ function animate(){
         if(p.life<=0) particles.splice(i,1);
     });
 
-    if(running) requestAnimationFrame(animate);
+    if(running){
+        animationId = requestAnimationFrame(animate);
+    }
 }
 
 animate();
 
 function gameOver(){
     running=false;
+    cancelAnimationFrame(animationId);
     document.getElementById("gameOver").style.display="block";
 }
 
 function restartGame(){
+    cancelAnimationFrame(animationId);
+
     fruits=[];
     slices=[];
     particles=[];

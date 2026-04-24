@@ -3,33 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <title>Fruit Cutting Game - Jar Counter (Big Fruits)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, fixed-fit=cover">
 <style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
 body{
     margin:0;
+    padding:0;
     overflow:hidden;
-    background: radial-gradient(circle at top, #0a0f1e, #000000);
+    background: #000000;
     font-family: 'Segoe UI', 'Arial', sans-serif;
     color:white;
     touch-action: none;
+    position: fixed;
+    width: 100%;
+    height: 100%;
 }
 
 canvas{
     display:block;
-    position:absolute;
+    position:fixed;
     top:0;
     left:0;
     z-index:1;
+    width: 100%;
+    height: 100%;
+    background: #000000;
 }
 
 #ui{
-    position:absolute;
+    position:fixed;
     top:15px;
     left:20px;
     font-size:26px;
     font-weight:bold;
-    background:rgba(0,0,0,0.6);
+    background:rgba(0,0,0,0.7);
     padding:8px 20px;
     border-radius:40px;
     backdrop-filter:blur(5px);
@@ -37,14 +50,15 @@ canvas{
     letter-spacing:1px;
     box-shadow:0 0 10px rgba(0,255,200,0.3);
     font-family:monospace;
+    color: white;
 }
 
 #gameOver{
-    position:absolute;
+    position:fixed;
     top:50%;
     left:50%;
     transform:translate(-50%,-50%);
-    background:rgba(0,0,0,0.9);
+    background:rgba(0,0,0,0.95);
     backdrop-filter:blur(12px);
     padding:30px 35px;
     border-radius:60px;
@@ -54,6 +68,7 @@ canvas{
     border:2px solid gold;
     box-shadow:0 0 50px rgba(255,215,0,0.5);
     min-width:280px;
+    max-width: 90vw;
 }
 
 #gameOver h1{
@@ -116,7 +131,7 @@ button:active{
 
 /* JARS CONTAINER (MODERN GLASS) */
 #boxes{
-    position:absolute;
+    position:fixed;
     bottom:12px;
     width:100%;
     display:flex;
@@ -127,6 +142,7 @@ button:active{
     z-index:15;
     pointer-events:none;
     box-sizing:border-box;
+    left: 0;
 }
 
 .box{
@@ -204,6 +220,37 @@ button:active{
 }
 
 /* fruit display icons */
+
+/* Very Good Popup Animation */
+@keyframes popupFade {
+    0% { opacity: 0; transform: scale(0.5); }
+    20% { opacity: 1; transform: scale(1.2); }
+    40% { opacity: 1; transform: scale(1); }
+    80% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0.8); visibility: hidden; }
+}
+
+.very-good-popup {
+    position: fixed;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #ffd89b, #c7e9fb);
+    color: #d41b1b;
+    font-size: 52px;
+    font-weight: bold;
+    padding: 20px 50px;
+    border-radius: 80px;
+    z-index: 200;
+    white-space: nowrap;
+    font-family: 'Arial Black', sans-serif;
+    text-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border: 3px solid gold;
+    letter-spacing: 2px;
+    pointer-events: none;
+    animation: popupFade 1.2s ease-out forwards;
+}
 </style>
 </head>
 
@@ -231,26 +278,56 @@ const ctx = canvas.getContext("2d");
 ctx.imageSmoothingEnabled = true;
 ctx.imageSmoothingQuality = "high";
 
-/* 💥 RESIZE FIX */
+/* 🔒 FIXED ANDROID SCREEN SIZE - NO SCROLLING, NO FRUIT OUTSIDE */
+let screenWidth = window.innerWidth;
+let screenHeight = window.innerHeight;
+
 function resizeCanvas(){
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    screenWidth = window.innerWidth;
+    screenHeight = window.innerHeight;
+    canvas.width = screenWidth;
+    canvas.height = screenHeight;
+    canvas.style.width = screenWidth + "px";
+    canvas.style.height = screenHeight + "px";
 }
 resizeCanvas();
+
+// Prevent any scroll or zoom behavior
 window.addEventListener("resize", ()=>{
     resizeCanvas();
-    updateJarPositions(); // re-calc jar zones after resize
+    updateJarPositions();
+    // Force scroll to top
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
 });
+
+// Lock screen to prevent any movement
+window.addEventListener("touchmove", function(e) {
+    if(e.target === canvas || canvas.contains(e.target)) {
+        e.preventDefault();
+    }
+}, { passive: false });
+
+document.body.addEventListener("touchmove", function(e) {
+    e.preventDefault();
+}, { passive: false });
 
 let fruits = [];
 let slices = [];
 let particles = [];
+let specialItems = []; // array for special image items
 let score = 0;
 let running = true;
 let animationId;
 
+// Special image counter - every 20 fruits
+let fruitCutCounter = 0;
+const SPECIAL_IMAGE_URL = "https://i.postimg.cc/FR29jzNn/1776996987711-1-removebg-preview.png";
+let specialImg = new Image();
+specialImg.src = SPECIAL_IMAGE_URL;
+
 /* ========== 🥫 JAR TRACKER SYSTEM ========== */
-// each fruit type has its own counter
 let jarFruitCount = {
     apple: 0,
     banana: 0,
@@ -269,7 +346,7 @@ const fruitTypes = [
 ];
 
 const boxesDiv = document.getElementById("boxes");
-let jarPositions = {};   // stores { key: { x, y } } (center point for teleport)
+let jarPositions = {};
 
 // create jars dynamically
 function buildJars(){
@@ -289,7 +366,6 @@ function buildJars(){
         fruitImg.alt = fruit.key;
         box.appendChild(fruitImg);
         
-        // counter badge
         const badge = document.createElement("div");
         badge.className = "jarCounterBadge";
         badge.id = `badge_${fruit.key}`;
@@ -298,7 +374,6 @@ function buildJars(){
         
         boxesDiv.appendChild(box);
     });
-    // update positions after DOM append
     setTimeout(() => {
         updateJarPositions();
     }, 40);
@@ -311,23 +386,20 @@ function updateJarPositions(){
         const fruitKey = fruitTypes[index].key;
         jarPositions[fruitKey] = {
             x: rect.left + rect.width/2,
-            y: rect.top + rect.height/2 - 10   // middle of jar body for attraction
+            y: rect.top + rect.height/2 - 10
         };
     });
 }
 
-// update UI count on jar badge
 function updateJarBadge(fruitKey){
     const badge = document.getElementById(`badge_${fruitKey}`);
     if(badge){
         badge.innerText = jarFruitCount[fruitKey];
-        // little pop animation
         badge.style.transform = "scale(1.2)";
         setTimeout(()=>{ if(badge) badge.style.transform = "scale(1)"; }, 150);
     }
 }
 
-// increment counter when slice teleports into jar
 function incrementJarCounter(fruitKey){
     if(jarFruitCount.hasOwnProperty(fruitKey)){
         jarFruitCount[fruitKey]++;
@@ -335,16 +407,88 @@ function incrementJarCounter(fruitKey){
     }
 }
 
-/* 🍉 FRUIT CLASS - BIG SIZE INCREASED */
+// Function to show "Very Good" popup
+function showVeryGoodPopup() {
+    const popup = document.createElement("div");
+    popup.className = "very-good-popup";
+    popup.innerText = "⭐ VERY GOOD! ⭐";
+    document.body.appendChild(popup);
+    setTimeout(() => {
+        if(popup && popup.remove) popup.remove();
+    }, 1200);
+}
+
+// Spawn special image after every 20 fruits cut
+function trySpawnSpecialItem() {
+    if(fruitCutCounter >= 20) {
+        fruitCutCounter = 0;
+        // Create special item that falls from top
+        const special = new SpecialItem();
+        specialItems.push(special);
+    }
+}
+
+/* 🎁 SPECIAL ITEM CLASS - Falls like fruit, can be swiped */
+class SpecialItem {
+    constructor() {
+        this.img = specialImg;
+        this.x = 60 + Math.random() * (screenWidth - 120);
+        this.y = -80 - Math.random() * 50;
+        this.radius = 65;
+        this.speedY = 1.8 + Math.random() * 2;
+        this.gravity = 0.25;
+        this.sliced = false;
+        this.rotation = 0;
+    }
+    
+    update() {
+        this.speedY += this.gravity;
+        this.y += this.speedY;
+        this.rotation += 0.03;
+    }
+    
+    draw() {
+        if(!this.img.complete) {
+            ctx.fillStyle = "#ff66cc";
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 50, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.font = "bold 20px sans-serif";
+            ctx.fillText("🎁", this.x-12, this.y+8);
+            return;
+        }
+        
+        let size = 130;
+        let ratio = this.img.width / this.img.height;
+        let drawW, drawH;
+        if(ratio > 1){
+            drawW = size;
+            drawH = size / ratio;
+        } else {
+            drawH = size;
+            drawW = size * ratio;
+        }
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.drawImage(this.img, -drawW/2, -drawH/2, drawW, drawH);
+        ctx.restore();
+    }
+}
+
+/* 🍉 FRUIT CLASS - BOUNDED INSIDE SCREEN */
 class Fruit{
     constructor(){
         this.data = fruitTypes[Math.floor(Math.random()*fruitTypes.length)];
         this.key = this.data.key;
         this.img = new Image();
         this.img.src = this.data.img;
-        this.x = Math.random() * canvas.width;
-        this.y = -60 - Math.random() * 40;
-        // 👇 BIGGER FRUIT RADIUS (increased from 58 to 78)
+        // 🍎 FRUIT SPAWN ONLY WITHIN VISIBLE SCREEN WIDTH
+        const safeMargin = 60;
+        this.x = safeMargin + Math.random() * (screenWidth - safeMargin * 2);
+        this.y = -80 - Math.random() * 50; // Start from above screen
         this.radius = 78;
         this.speedY = 1.8 + Math.random() * 2.5;
         this.gravity = 0.25;
@@ -370,7 +514,6 @@ class Fruit{
             return;
         }
 
-        // 👇 BIGGER FRUIT DRAW SIZE (increased from 112 to 160)
         let size = 160;
         let ratio = this.img.width / this.img.height;
         let drawW, drawH;
@@ -390,7 +533,7 @@ class Fruit{
     }
 }
 
-/* 🍉 SLICE PART - TELEPORT TO OWN JAR (BIGGER SLICES) */
+/* 🍉 SLICE PART - TELEPORT TO OWN JAR */
 class SlicePart{
     constructor(x, y, img, fruitKey, side, targetX, targetY){
         this.x = x;
@@ -415,7 +558,7 @@ class SlicePart{
             this.y += this.vy;
             this.vy += this.gravity;
             this.rot += 0.15;
-            if(this.vy > 1.5 || this.y > canvas.height - 120){
+            if(this.vy > 1.5 || this.y > screenHeight - 120){
                 this.toJar = true;
             }
         } else {
@@ -440,7 +583,7 @@ class SlicePart{
         }
 
         if(this.alpha <= 0) return;
-        if(this.y > canvas.height + 150 || this.x < -150 || this.x > canvas.width + 150){
+        if(this.y > screenHeight + 150 || this.x < -150 || this.x > screenWidth + 150){
             this.alpha = 0;
         }
     }
@@ -454,7 +597,6 @@ class SlicePart{
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rot);
         
-        // 👇 BIGGER CLIPPING FOR HALVES
         let w = 130;
         ctx.beginPath();
         if(this.side === -1){
@@ -464,7 +606,6 @@ class SlicePart{
         }
         ctx.clip();
         
-        // 👇 BIGGER SLICE DRAW SIZE
         let size = 140;
         let ratio = this.img.width / this.img.height;
         let drawW, drawH;
@@ -480,7 +621,7 @@ class SlicePart{
     }
 }
 
-/* particles (juice effect) - slightly bigger splash */
+/* particles (juice effect) */
 class Particle{
     constructor(x,y){
         this.x = x;
@@ -495,6 +636,9 @@ class Particle{
         this.y += this.vy;
         this.vy += 0.15;
         this.life--;
+        // keep particles inside screen boundaries
+        if(this.x < 0) this.x = 0;
+        if(this.x > screenWidth) this.x = screenWidth;
     }
     draw(){
         ctx.fillStyle = `rgba(255, 180, 50, ${this.life/25})`;
@@ -526,21 +670,43 @@ function startSpawning(){
     }, 1300);
 }
 
-/* 🎯 CUTTING MECHANICS (swipe & mouse) - adjusted for bigger hit radius */
+/* 🎯 CUTTING MECHANICS - Also handles special items */
 let drawing = false;
 
 function handleCut(x,y){
     if(!running) return;
+    
+    // Check special items first
+    for(let i=0;i<specialItems.length;i++){
+        let s = specialItems[i];
+        let dx = s.x - x;
+        let dy = s.y - y;
+        let dist = Math.hypot(dx,dy);
+        if(dist < s.radius + 18 && !s.sliced){
+            s.sliced = true;
+            // Show Very Good popup
+            showVeryGoodPopup();
+            // Add some particles for effect
+            for(let p=0;p<25;p++) particles.push(new Particle(s.x, s.y));
+            specialItems.splice(i,1);
+            return;
+        }
+    }
+    
+    // Normal fruit cutting
     for(let i=0;i<fruits.length;i++){
         let f = fruits[i];
         let dx = f.x - x;
         let dy = f.y - y;
         let dist = Math.hypot(dx,dy);
-        // 👇 BIGGER SLICE RADIUS (increased from 70 to 95)
         if(dist < f.radius + 18 && !f.sliced){
             f.sliced = true;
             score++;
+            fruitCutCounter++;
             document.getElementById("score").innerText = score;
+            
+            // Check if we need to spawn special item
+            trySpawnSpecialItem();
             
             let target = jarPositions[f.key];
             if(!target){
@@ -552,8 +718,8 @@ function handleCut(x,y){
                 let rightSlice = new SlicePart(f.x, f.y, f.img, f.key, 1, target.x, target.y);
                 slices.push(leftSlice, rightSlice);
             } else {
-                let leftSlice = new SlicePart(f.x, f.y, f.img, f.key, -1, canvas.width/2, canvas.height-80);
-                let rightSlice = new SlicePart(f.x, f.y, f.img, f.key, 1, canvas.width/2, canvas.height-80);
+                let leftSlice = new SlicePart(f.x, f.y, f.img, f.key, -1, screenWidth/2, screenHeight-80);
+                let rightSlice = new SlicePart(f.x, f.y, f.img, f.key, 1, screenWidth/2, screenHeight-80);
                 slices.push(leftSlice, rightSlice);
             }
             
@@ -564,17 +730,36 @@ function handleCut(x,y){
     }
 }
 
-// touch + mouse events
-canvas.addEventListener("mousedown",(e)=>{ drawing=true; handleCut(e.clientX, e.clientY); });
+// touch + mouse events with proper coordinate mapping
+canvas.addEventListener("mousedown",(e)=>{ 
+    drawing=true; 
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    let canvasX = (e.clientX - rect.left) * scaleX;
+    let canvasY = (e.clientY - rect.top) * scaleY;
+    handleCut(canvasX, canvasY); 
+});
 window.addEventListener("mouseup",()=>{ drawing=false; });
-canvas.addEventListener("mousemove",(e)=>{ if(drawing) handleCut(e.clientX, e.clientY); });
+canvas.addEventListener("mousemove",(e)=>{ 
+    if(drawing){
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let canvasX = (e.clientX - rect.left) * scaleX;
+        let canvasY = (e.clientY - rect.top) * scaleY;
+        handleCut(canvasX, canvasY);
+    }
+});
 
 canvas.addEventListener("touchstart",(e)=>{
     e.preventDefault();
     drawing=true;
     const rect = canvas.getBoundingClientRect();
-    let tx = e.touches[0].clientX - rect.left;
-    let ty = e.touches[0].clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    let tx = (e.touches[0].clientX - rect.left) * scaleX;
+    let ty = (e.touches[0].clientY - rect.top) * scaleY;
     handleCut(tx, ty);
 });
 canvas.addEventListener("touchend",(e)=>{ e.preventDefault(); drawing=false; });
@@ -582,12 +767,14 @@ canvas.addEventListener("touchmove",(e)=>{
     e.preventDefault();
     if(!drawing) return;
     const rect = canvas.getBoundingClientRect();
-    let tx = e.touches[0].clientX - rect.left;
-    let ty = e.touches[0].clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    let tx = (e.touches[0].clientX - rect.left) * scaleX;
+    let ty = (e.touches[0].clientY - rect.top) * scaleY;
     handleCut(tx, ty);
 });
 
-/* GAME OVER LOGIC + SHOW SUMMARY (BIG FONT MID SCREEN) */
+/* GAME OVER LOGIC */
 function gameOver(){
     if(!running) return;
     running = false;
@@ -620,7 +807,9 @@ function restartGame(){
     fruits = [];
     slices = [];
     particles = [];
+    specialItems = [];
     score = 0;
+    fruitCutCounter = 0;
     running = true;
     
     jarFruitCount = {
@@ -650,12 +839,23 @@ function restartGame(){
             let f = fruits[i];
             f.update();
             f.draw();
-            if(f.y > canvas.height + 100 && !f.sliced){
+            if(f.y > screenHeight - 100 && !f.sliced){
                 gameOver();
                 return;
             }
             if(f.sliced){
                 fruits.splice(i,1);
+                i--;
+            }
+        }
+        
+        // Update and draw special items
+        for(let i=0;i<specialItems.length;i++){
+            let s = specialItems[i];
+            s.update();
+            s.draw();
+            if(s.y > screenHeight - 100 && !s.sliced){
+                specialItems.splice(i,1);
                 i--;
             }
         }
@@ -690,6 +890,8 @@ buildJars();
 updateJarPositions();
 window.addEventListener('resize', ()=>{
     setTimeout(()=>{
+        screenWidth = canvas.width;
+        screenHeight = canvas.height;
         updateJarPositions();
     }, 60);
 });
@@ -705,12 +907,22 @@ function mainLoop(){
         let f = fruits[i];
         f.update();
         f.draw();
-        if(f.y > canvas.height + 90 && !f.sliced){
+        if(f.y > screenHeight - 100 && !f.sliced){
             gameOver();
             return;
         }
         if(f.sliced){
             fruits.splice(i,1);
+            i--;
+        }
+    }
+    
+    for(let i=0;i<specialItems.length;i++){
+        let s = specialItems[i];
+        s.update();
+        s.draw();
+        if(s.y > screenHeight - 100 && !s.sliced){
+            specialItems.splice(i,1);
             i--;
         }
     }
@@ -744,7 +956,10 @@ setInterval(()=>{
         updateJarPositions();
     }
 }, 2200);
-</script>
 
+// Final safety: prevent body scroll
+document.body.style.overflow = 'hidden';
+document.documentElement.style.overflow = 'hidden';
+</script>
 </body>
 </html>
